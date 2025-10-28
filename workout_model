@@ -1,0 +1,43 @@
+class Workout {
+  final int? id;
+  final String type; 
+  final int durationMinutes;
+  final int? sets; 
+  final int? reps; 
+  final int caloriesBurned;
+  final DateTime date;
+
+  Workout({
+    this.id,
+    required this.type,
+    required this.durationMinutes,
+    this.sets,
+    this.reps,
+    required this.caloriesBurned,
+    required this.date,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'type': type,
+      'durationMinutes': durationMinutes,
+      'sets': sets,
+      'reps': reps,
+      'caloriesBurned': caloriesBurned,
+      'date': date.toIso8601String(),
+    };
+  }
+
+  factory Workout.fromMap(Map<String, dynamic> map) {
+    return Workout(
+      id: map['id'] as int?,
+      type: map['type'] as String,
+      durationMinutes: map['durationMinutes'] as int,
+      sets: map['sets'] as int?,
+      reps: map['reps'] as int?,
+      caloriesBurned: map['caloriesBurned'] as int,
+      date: DateTime.parse(map['date'] as String),
+    );
+  }
+}
