@@ -1,0 +1,160 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../models/workout_model.dart';
+import '../database/db_helper.dart';
+import 'add_edit_workout_screen.dart'; 
+
+class WorkoutLogScreen extends StatefulWidget {
+  const WorkoutLogScreen({super.key});
+
+  @override
+  State<WorkoutLogScreen> createState() => _WorkoutLogScreenState();
+}
+
+class _WorkoutLogScreenState extends State<WorkoutLogScreen> {
+  final _dbHelper = DatabaseHelper.instance;
+  late Future<List<Workout>> _workoutsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWorkouts();
+  }
+
+
+  void _loadWorkouts() {
+    setState(() {
+      _workoutsFuture = _dbHelper.getWorkouts();
+    });
+  }
+
+
+  Future<void> _navigateToAddEdit({Workout? workout}) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddEditWorkoutScreen(workout: workout),
+      ),
+    );
+
+    if (result == true) {
+      _loadWorkouts();
+    }
+  }
+
+  Future<void> _deleteWorkout(int id) async {
+    await _dbHelper.deleteWorkout(id);
+    _loadWorkouts(); 
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Workout deleted.')),
+    );
+  }
+
+
+  String _formatSetsReps(Workout workout) {
+    if (workout.sets != null && workout.reps != null) {
+      return '${workout.sets} sets x ${workout.reps} reps';
+    }
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Workout Log'),
+        backgroundColor: Colors.indigo,
+      ),
+      body: FutureBuilder<List<Workout>>(
+        future: _workoutsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(
+                child: Text('No workouts logged yet. Tap "+" to start!'));
+          }
+
+          final workouts = snapshot.data!;
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(8.0),
+            itemCount: workouts.length,
+            itemBuilder: (context, index) {
+              final workout = workouts[index];
+
+              return Card(
+                elevation: 2,
+                margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.indigo.shade100,
+                    child: Icon(
+                      workout.type.toLowerCase().contains('run') || workout.type.toLowerCase().contains('cycle')
+                          ? Icons.directions_run
+                          : Icons.fitness_center,
+                      color: Colors.indigo,
+                    ),
+                  ),
+                  
+                  title: Text(
+                    workout.type,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Duration: ${workout.durationMinutes} min', style: TextStyle(color: Colors.grey.shade700)),
+                      if (_formatSetsReps(workout).isNotEmpty) 
+                        Text(_formatSetsReps(workout), style: TextStyle(color: Colors.grey.shade700)),
+                      const SizedBox(height: 4),
+                      Text(DateFormat.yMMMd().add_jm().format(workout.date), style: const TextStyle(fontSize: 12)),
+                    ],
+                  ),
+                  
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('${workout.caloriesBurned}', 
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent, fontSize: 16)),
+                          const Text('kcal', style: TextStyle(fontSize: 10)),
+                        ],
+                      ),
+                      
+                      IconButton(
+                        icon: const Icon(Icons.edit, size: 20),
+                        onPressed: () => _navigateToAddEdit(workout: workout),
+                      ),
+                      
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                        onPressed: () => _deleteWorkout(workout.id!),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+      
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _navigateToAddEdit(),
+        backgroundColor: Colors.indigo.shade700,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
+}
