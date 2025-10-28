@@ -1,0 +1,225 @@
+import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+import '../database/db_helper.dart';
+
+class ProgressScreen extends StatefulWidget {
+  const ProgressScreen({super.key});
+
+  @override
+  State<ProgressScreen> createState() => _ProgressScreenState();
+}
+
+class _ProgressScreenState extends State<ProgressScreen> {
+  final _dbHelper = DatabaseHelper.instance;
+  late Future<List<BarChartGroupData>> _chartDataFuture;
+  
+  late DateTime _startDate;
+  late DateTime _endDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _setWeekRange(DateTime.now());
+    _loadChartData();
+  }
+
+
+  void _setWeekRange(DateTime day) {
+    int daysToSubtract = day.weekday - 1; 
+    _startDate = DateTime(day.year, day.month, day.day).subtract(Duration(days: daysToSubtract));
+    _endDate = _startDate.add(const Duration(days: 6)); 
+  }
+
+  Future<void> _loadChartData() async {
+    setState(() {
+      _chartDataFuture = _fetchWeeklyProgress();
+    });
+  }
+
+  Future<List<BarChartGroupData>> _fetchWeeklyProgress() async {
+    List<BarChartGroupData> weeklyData = [];
+    
+    for (int i = 0; i < 7; i++) {
+      final day = _startDate.add(Duration(days: i));
+      final nextDay = day.add(const Duration(days: 1));
+      
+      final burned = await _dbHelper.getTotalBurnedInDateRange(day, nextDay);
+      final consumed = await _dbHelper.getTotalCaloriesInDateRange(day, nextDay);
+      
+      weeklyData.add(BarChartGroupData(
+        x: i, 
+        barRods: [
+          BarChartRodData(
+            toY: consumed.toDouble(),
+            color: Colors.redAccent,
+            width: 10,
+          ),
+          BarChartRodData(
+            toY: burned.toDouble(),
+            color: Colors.green,
+            width: 10,
+          ),
+        ],
+        showingTooltipIndicators: [],
+      ));
+    }
+    
+    return weeklyData;
+  }
+
+
+  Widget getTitles(double value, TitleMeta meta) {
+    const style = TextStyle(
+      color: Colors.grey,
+      fontWeight: FontWeight.bold,
+      fontSize: 10,
+    );
+    String text;
+    switch (value.toInt()) {
+      case 0:
+        text = 'Mon';
+        break;
+      case 1:
+        text = 'Tue';
+        break;
+      case 2:
+        text = 'Wed';
+        break;
+      case 3:
+        text = 'Thu';
+        break;
+      case 4:
+        text = 'Fri';
+        break;
+      case 5:
+        text = 'Sat';
+        break;
+      case 6:
+        text = 'Sun';
+        break;
+      default:
+        text = '';
+        break;
+    }
+    return SideTitleWidget(
+      axisSide: meta.axisSide,
+      space: 4,
+      child: Text(text, style: style),
+    );
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Progress Tracking'),
+        backgroundColor: Colors.blueGrey,
+      ),
+      body: FutureBuilder<List<BarChartGroupData>>(
+        future: _chartDataFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Error loading progress: ${snapshot.error}'));
+          }
+          
+          final chartData = snapshot.data ?? [];
+          final maxY = chartData.expand((group) => group.barRods.map((rod) => rod.toY)).reduce((a, b) => a > b ? a : b);
+          
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Weekly Calorie Balance',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blueGrey.shade800),
+                ),
+                Text(
+                  '${DateFormat.yMMMd().format(_startDate)} - ${DateFormat.yMMMd().format(_endDate)}',
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                
+                const SizedBox(height: 20),
+                
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(width: 10, height: 10, color: Colors.redAccent),
+                    const SizedBox(width: 5),
+                    const Text('Consumed (kcal)'),
+                    const SizedBox(width: 15),
+                    Container(width: 10, height: 10, color: Colors.green),
+                    const SizedBox(width: 5),
+                    const Text('Burned (kcal)'),
+                  ],
+                ),
+                
+                const SizedBox(height: 20),
+                
+                SizedBox(
+                  height: 300,
+                  child: BarChart(
+                    BarChartData(
+                      maxY: (maxY * 1.1).ceilToDouble(), 
+                      barGroups: chartData,
+                      gridData: const FlGridData(show: true, drawVerticalLine: false),
+                      borderData: FlBorderData(
+                        show: true,
+                        border: Border.symmetric(horizontal: BorderSide(color: Colors.grey.shade300)),
+                      ),
+                      titlesData: FlTitlesData(
+                        show: true,
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            getTitlesWidget: getTitles,
+                            reservedSize: 30,
+                          ),
+                        ),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 40,
+                            interval: (maxY / 4).ceilToDouble() > 0 ? (maxY / 4).ceilToDouble() : 500,
+                          ),
+                        ),
+                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      ),
+                      barTouchData: BarTouchData(
+                        enabled: true,
+                        touchTooltipData: BarTouchTooltipData(
+                          tooltipBgColor: Colors.blueGrey,
+                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                            String label = rodIndex == 0 ? 'Consumed' : 'Burned';
+                            return BarTooltipItem(
+                              '$label: ${rod.toY.toInt()} kcal',
+                              const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 30),
+                const Center(
+                  child: Text(
+                    'Motivational Quote Placeholder: Keep up the great work!',
+                    style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic, color: Colors.green),
+                  ),
+                )
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
