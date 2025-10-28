@@ -1,0 +1,248 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../models/meal_model.dart';
+import '../database/db_helper.dart';
+
+class CalorieTrackerScreen extends StatefulWidget {
+  const CalorieTrackerScreen({super.key});
+
+  @override
+  State<CalorieTrackerScreen> createState() => _CalorieTrackerScreenState();
+}
+
+class _CalorieTrackerScreenState extends State<CalorieTrackerScreen> {
+  final _dbHelper = DatabaseHelper.instance;
+  final TextEditingController _mealNameController = TextEditingController();
+  final TextEditingController _calorieValueController = TextEditingController();
+
+  late Future<List<Meal>> _mealsFuture;
+  DateTime _selectedDate = DateTime.now();
+
+  int _totalDailyCalories = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMeals();
+  }
+
+  @override
+  void dispose() {
+    _mealNameController.dispose();
+    _calorieValueController.dispose();
+    super.dispose();
+  }
+
+
+  Future<void> _loadMeals() async {
+    final today = DateTime(
+      _selectedDate.year, 
+      _selectedDate.month, 
+      _selectedDate.day,
+    );
+    
+    final mealsFuture = _dbHelper.getMealsByDate(today);
+
+    setState(() {
+      _mealsFuture = mealsFuture;
+    });
+
+    final meals = await mealsFuture;
+    _calculateTotal(meals);
+  }
+
+  void _calculateTotal(List<Meal> meals) {
+    int total = meals.fold(0, (sum, item) => sum + item.calories);
+    setState(() {
+      _totalDailyCalories = total;
+    });
+  }
+
+
+  Future<void> _addMeal() async {
+    final String mealName = _mealNameController.text.trim();
+    final int? calorieValue = int.tryParse(_calorieValueController.text.trim());
+
+    if (mealName.isEmpty || calorieValue == null || calorieValue <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid meal name and positive calorie count.')),
+      );
+      return;
+    }
+
+    final newMeal = Meal(
+      name: mealName,
+      calories: calorieValue,
+      date: _selectedDate,
+    );
+
+    await _dbHelper.insertMeal(newMeal);
+    
+    _mealNameController.clear();
+    _calorieValueController.clear();
+    FocusScope.of(context).unfocus();
+    
+    await _loadMeals(); 
+    
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${newMeal.name} logged successfully!')),
+    );
+  }
+
+  Future<void> _deleteMeal(int id) async {
+    await _dbHelper.deleteMeal(id);
+    await _loadMeals();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Meal entry deleted.')),
+    );
+  }
+
+
+  Widget _buildMealInputCard() {
+    return Card(
+      elevation: 3,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Log New Meal',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _mealNameController,
+              decoration: const InputDecoration(
+                labelText: 'Meal/Food Item (e.g., Lunch, Apple)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _calorieValueController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Calories (kcal)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 15),
+            ElevatedButton.icon(
+              onPressed: _addMeal,
+              icon: const Icon(Icons.add_circle_outline),
+              label: const Text('ADD CALORIES'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal.shade700,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Calorie Tracker'),
+        backgroundColor: Colors.teal,
+      ),
+      body: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 20.0),
+            color: Colors.teal.shade50,
+            child: Column(
+              children: [
+                Text(
+                  DateFormat.yMMMd().format(_selectedDate),
+                  style: TextStyle(fontSize: 16, color: Colors.grey.shade700),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'TOTAL INTAKE: $_totalDailyCalories kcal',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16.0),
+              children: [
+                _buildMealInputCard(),
+                const SizedBox(height: 20),
+                
+                const Text(
+                  'Daily Meal Log',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10),
+                
+                FutureBuilder<List<Meal>>(
+                  future: _mealsFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.only(top: 20),
+                        child: Center(child: Text('No meals logged yet today.')),
+                      );
+                    }
+                    
+                    final meals = snapshot.data!;
+                    
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: meals.length,
+                      itemBuilder: (context, index) {
+                        final meal = meals[index];
+                        return Card(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          elevation: 1,
+                          child: ListTile(
+                            title: Text(meal.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: Text('Logged: ${DateFormat.Hm().format(meal.date)}'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${meal.calories} kcal',
+                                  style: const TextStyle(color: Colors.teal, fontWeight: FontWeight.bold),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () => _deleteMeal(meal.id!),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
