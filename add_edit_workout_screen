@@ -1,0 +1,247 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../models/workout_model.dart';
+import '../database/db_helper.dart';
+
+class AddEditWorkoutScreen extends StatefulWidget {
+  final Workout? workout; 
+
+  const AddEditWorkoutScreen({super.key, this.workout});
+
+  @override
+  State<AddEditWorkoutScreen> createState() => _AddEditWorkoutScreenState();
+}
+
+class _AddEditWorkoutScreenState extends State<AddEditWorkoutScreen> {
+  final _dbHelper = DatabaseHelper.instance;
+  final _formKey = GlobalKey<FormState>();
+
+ 
+  late TextEditingController _typeController;
+  late TextEditingController _durationController;
+  late TextEditingController _caloriesController;
+  late TextEditingController _setsController;
+  late TextEditingController _repsController;
+  late DateTime _selectedDate;
+
+ 
+  @override
+  void initState() {
+    super.initState();
+    final isEditing = widget.workout != null;
+    
+    _typeController = TextEditingController(text: widget.workout?.type ?? '');
+    _durationController = TextEditingController(text: widget.workout?.durationMinutes.toString() ?? '');
+    _caloriesController = TextEditingController(text: widget.workout?.caloriesBurned.toString() ?? '');
+    
+
+    _setsController = TextEditingController(text: widget.workout?.sets?.toString() ?? '');
+    _repsController = TextEditingController(text: widget.workout?.reps?.toString() ?? '');
+    
+    _selectedDate = widget.workout?.date ?? DateTime.now();
+  }
+
+  @override
+  void dispose() {
+    _typeController.dispose();
+    _durationController.dispose();
+    _caloriesController.dispose();
+    _setsController.dispose();
+    _repsController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _selectDate() async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    
+    if (pickedDate != null && pickedDate != _selectedDate) {
+      if (!mounted) return;
+      final TimeOfDay? pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(_selectedDate),
+      );
+      
+      if (pickedTime != null) {
+        setState(() {
+          _selectedDate = DateTime(
+            pickedDate.year,
+            pickedDate.month,
+            pickedDate.day,
+            pickedTime.hour,
+            pickedTime.minute,
+          );
+        });
+      } else {
+        setState(() {
+          _selectedDate = pickedDate;
+        });
+      }
+    }
+  }
+
+  void _saveWorkout() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final int duration = int.parse(_durationController.text);
+    final int calories = int.parse(_caloriesController.text);
+    final int? sets = int.tryParse(_setsController.text);
+    final int? reps = int.tryParse(_repsController.text);
+
+    final Workout newWorkout = Workout(
+      id: widget.workout?.id, 
+      type: _typeController.text,
+      durationMinutes: duration,
+      caloriesBurned: calories,
+      date: _selectedDate,
+      sets: sets,
+      reps: reps,
+    );
+
+    if (widget.workout == null) {
+      await _dbHelper.insertWorkout(newWorkout);
+    } else {
+      await _dbHelper.updateWorkout(newWorkout);
+    }
+
+    if (!mounted) return;
+    Navigator.pop(context, true); 
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isEditing = widget.workout != null;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(isEditing ? 'Edit Workout' : 'Add New Workout'),
+        backgroundColor: Colors.indigo,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              ListTile(
+                title: Text(
+                  'Date & Time: ${DateFormat.yMMMd().add_jm().format(_selectedDate)}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                ),
+                trailing: const Icon(Icons.calendar_today, color: Colors.indigo),
+                onTap: _selectDate,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: BorderSide(color: Colors.grey.shade300)
+                ),
+                tileColor: Colors.indigo.shade50,
+              ),
+
+              const SizedBox(height: 20),
+
+              TextFormField(
+                controller: _typeController,
+                decoration: const InputDecoration(
+                  labelText: 'Workout Type (e.g., Running, Weightlifting)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.fitness_center),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a workout type.';
+                  }
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 15),
+
+              TextFormField(
+                controller: _durationController,
+                decoration: const InputDecoration(
+                  labelText: 'Duration (minutes)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.timer),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || int.tryParse(value) == null || int.parse(value) <= 0) {
+                    return 'Please enter a valid duration in minutes.';
+                  }
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 15),
+
+              TextFormField(
+                controller: _caloriesController,
+                decoration: const InputDecoration(
+                  labelText: 'Estimated Calories Burned',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.local_fire_department, color: Colors.red),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || int.tryParse(value) == null || int.parse(value) < 0) {
+                    return 'Please enter a valid calorie count.';
+                  }
+                  return null;
+                },
+              ),
+              
+              const SizedBox(height: 20),
+              
+              const Text('Optional: Strength Training Details', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+
+              const SizedBox(height: 10),
+
+              TextFormField(
+                controller: _setsController,
+                decoration: const InputDecoration(
+                  labelText: 'Sets',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.numbers),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+
+              const SizedBox(height: 15),
+
+              TextFormField(
+                controller: _repsController,
+                decoration: const InputDecoration(
+                  labelText: 'Reps per Set',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.numbers),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+
+              const SizedBox(height: 30),
+
+              ElevatedButton.icon(
+                onPressed: _saveWorkout,
+                icon: const Icon(Icons.save),
+                label: Text(isEditing ? 'UPDATE WORKOUT' : 'LOG WORKOUT'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  textStyle: const TextStyle(fontSize: 18),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
