@@ -1,0 +1,189 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../database/db_helper.dart';
+import 'workout_log_screen.dart';
+import 'calorie_tracker_screen.dart';
+import 'progress_screen.dart';
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _dbHelper = DatabaseHelper.instance;
+  int _caloriesConsumed = 0;
+  int _caloriesBurned = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDailySummary();
+  }
+
+  void _loadDailySummary() async {
+    final today = DateTime.now();
+    final startOfDay = DateTime(today.year, today.month, today.day);
+    final endOfToday = startOfDay.add(const Duration(days: 1));
+
+    final consumed = await _dbHelper.getTotalCaloriesInDateRange(startOfDay, endOfToday);
+    final burned = await _dbHelper.getTotalBurnedInDateRange(startOfDay, endOfToday);
+
+    if (mounted) {
+      setState(() {
+        _caloriesConsumed = consumed;
+        _caloriesBurned = burned;
+      });
+    }
+  }
+
+  Widget _buildNavigationTile({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required Widget screen,
+  }) {
+    return Card(
+      elevation: 4,
+      margin: const EdgeInsets.symmetric(vertical: 8.0),
+      child: ListTile(
+        leading: Icon(icon, color: color, size: 30),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => screen),
+          );
+          _loadDailySummary();
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final balance = _caloriesBurned - _caloriesConsumed;
+    final balanceColor = balance >= 0 ? Colors.green.shade700 : Colors.red.shade700;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('FlowState Tracker'),
+        backgroundColor: Colors.blue.shade700,
+        elevation: 0,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Container(
+              padding: const EdgeInsets.all(20.0),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Today: ${DateFormat.yMMMd().format(DateTime.now())}',
+                    style: TextStyle(fontSize: 16, color: Colors.blueGrey.shade700),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text('Daily Calorie Balance', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Divider(height: 20),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildStatColumn(
+                        label: 'Consumed',
+                        value: _caloriesConsumed,
+                        color: Colors.redAccent,
+                        icon: Icons.fastfood,
+                      ),
+                      _buildStatColumn(
+                        label: 'Burned',
+                        value: _caloriesBurned,
+                        color: Colors.green,
+                        icon: Icons.local_fire_department,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 15),
+                  
+                  Center(
+                    child: Text(
+                      'NET: ${balance >= 0 ? '+' : ''}$balance kcal',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: balanceColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 30),
+            const Text(
+              'Navigation',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const Divider(),
+
+            _buildNavigationTile(
+              title: 'Workout Log',
+              icon: Icons.fitness_center,
+              color: Colors.indigo,
+              screen: const WorkoutLogScreen(),
+            ),
+            _buildNavigationTile(
+              title: 'Calorie Tracker',
+              icon: Icons.restaurant,
+              color: Colors.teal,
+              screen: const CalorieTrackerScreen(),
+            ),
+            _buildNavigationTile(
+              title: 'Progress Dashboard',
+              icon: Icons.show_chart,
+              color: Colors.purple,
+              screen: const ProgressScreen(),
+            ),
+            
+            _buildNavigationTile(
+              title: 'Settings & Reminders',
+              icon: Icons.settings,
+              color: Colors.blueGrey,
+              screen: const Center(child: Text("Settings Screen Placeholder")), 
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatColumn({
+    required String label,
+    required int value,
+    required Color color,
+    required IconData icon,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 30),
+        const SizedBox(height: 5),
+        Text(
+          value.toString(),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color),
+        ),
+        Text(label, style: const TextStyle(fontSize: 14, color: Colors.black54)),
+      ],
+    );
+  }
+}
